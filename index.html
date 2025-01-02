@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Electricity Basics Simulation</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+      background: #f9f9f9;
+    }
+    #canvasContainer {
+      text-align: center;
+    }
+    #myCanvas {
+      background: #ffffff;
+      border: 1px solid #ccc;
+      margin: 10px 0;
+    }
+    .sliderContainer {
+      margin: 10px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+    }
+    .sliderLabel {
+      width: 80px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Simple Electricity Analogy</h1>
+  <p>
+    Adjust the <strong>Pressure</strong> (voltage) and <strong>Pipe Size</strong> (current) sliders.
+    Here the water flows from left to right, spinning a paddle wheel to represent doing work.
+  </p>
+
+  <!-- Sliders for controlling voltage (pressure) and pipe size (current) -->
+  <div class="sliderContainer">
+    <div class="sliderLabel">Pressure</div>
+    <input
+      id="pressureSlider"
+      type="range"
+      min="0"
+      max="100"
+      value="50"
+      step="1"
+    />
+    <span id="pressureValue">50</span>
+  </div>
+  
+  <div class="sliderContainer">
+    <div class="sliderLabel">Pipe Size</div>
+    <input
+      id="pipeSlider"
+      type="range"
+      min="1"
+      max="100"
+      value="50"
+      step="1"
+    />
+    <span id="pipeValue">50</span>
+  </div>
+
+  <div id="canvasContainer">
+    <canvas id="myCanvas" width="800" height="400"></canvas>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("myCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // Sliders
+    const pressureSlider = document.getElementById("pressureSlider");
+    const pipeSlider = document.getElementById("pipeSlider");
+    const pressureValue = document.getElementById("pressureValue");
+    const pipeValue = document.getElementById("pipeValue");
+
+    // Simulation variables
+    let pressure = parseInt(pressureSlider.value, 10); // 0..100
+    let pipeSize = parseInt(pipeSlider.value, 10);     // 1..100
+
+    // We’ll track time so bubble animation can wobble
+    let prevTime = performance.now();
+
+    // Layout geometry
+    // Place the gauge above the pipe, so the pipe is near the middle horizontally
+    const gaugeCenterX = 400;
+    const gaugeCenterY = 100;
+    const gaugeRadius  = 50;
+    
+    // Pipe near the middle of the canvas
+    const pipeStartX   = 250;
+    const pipeStartY   = 200;   // top edge of the pipe
+    const pipeLength   = 300;
+
+    // Paddle wheel center
+    const wheelCenterX = pipeStartX + pipeLength + 40;
+    const wheelCenterY = pipeStartY + 15; // roughly center of the pipe
+
+    // Paddle rotation
+    let paddleAngle = 0;
+
+    // Create bubbles
+    const numBubbles = 12;
+    let bubbles = [];
+    function initBubbles() {
+      bubbles = [];
+      for (let i = 0; i < numBubbles; i++) {
+        bubbles.push({
+          x: Math.random() * pipeLength,        // position in the pipe
+          radius: 2 + Math.random() * 4,        // bubble size
+          speed: 0.5 + Math.random() * 0.5,     // bubble's own speed factor
+          wobbleSpeed: 0.002 + Math.random() * 0.003,
+          wobbleAmplitude: 2 + Math.random() * 3,
+          verticalOffset: (Math.random() - 0.5) * 0.6
+        });
+      }
+    }
+    initBubbles();
+
+    // Listen for slider changes
+    pressureSlider.addEventListener("input", () => {
+      pressure = parseInt(pressureSlider.value, 10);
+      pressureValue.textContent = pressure;
+    });
+    pipeSlider.addEventListener("input", () => {
+      pipeSize = parseInt(pipeSlider.value, 10);
+      pipeValue.textContent = pipeSize;
+    });
+
+    function animate(currentTime) {
+      const deltaTime = currentTime - prevTime;
+      prevTime = currentTime;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 1) Draw the gauge
+      drawGauge(gaugeCenterX, gaugeCenterY, gaugeRadius, pressure);
+
+      // 2) Connect gauge to top of the pipe
+      drawGaugeToPipeConnection();
+
+      // 3) Draw pipe and water flow (with thick outline)
+      drawPipe(pipeStartX, pipeStartY, deltaTime);
+
+      // 4) Draw the paddle wheel at the exit
+      drawPaddleWheel(deltaTime);
+
+      requestAnimationFrame(animate);
+    }
+
+    // Draw a gauge whose needle:
+    // - is at 7:00 (240°) when value = 0
+    // - is at 5:00 (300°) when value = 100
+    // In standard math orientation: 3:00 is 0°, angles increase CCW.
+    function drawGauge(cx, cy, radius, value) {
+      // Outer circle
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+      ctx.strokeStyle = "#333";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.closePath();
+
+      // Draw some ticks
+      ctx.save();
+      ctx.translate(cx, cy);
+      for (let i = 0; i < 8; i++) {
+        ctx.rotate((2 * Math.PI) / 8);
+        ctx.beginPath();
+        ctx.moveTo(0, -radius);
+        ctx.lineTo(0, -radius + 8);
+        ctx.strokeStyle = "#555";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Angles for 7:00 -> 5:00 in standard orientation
+      // 7:00 = 240° = 4π/3
+      // 5:00 = 300° = 5π/3
+      const minAngle = (4 * Math.PI) / 3; 
+      const maxAngle = (5 * Math.PI) / 3;
+      const angleRange = maxAngle - minAngle;
+      const angle = minAngle + (value / 100) * angleRange;
+
+      // Draw the needle
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      // needle extends to the right in local coords (the default 0 rad direction)
+      ctx.moveTo(0, 0);
+      ctx.lineTo(radius - 10, 0); 
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+
+      // Center dot
+      ctx.beginPath();
+      ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = "black";
+      ctx.fill();
+
+      // Label
+      ctx.font = "14px sans-serif";
+      ctx.fillStyle = "#333";
+      ctx.fillText("Pressure (V)", cx - radius, cy + radius + 18);
+    }
+
+    // Draw a line straight down from gauge to the top of the pipe
+    function drawGaugeToPipeConnection() {
+      ctx.beginPath();
+      // from bottom of gauge circle to top center of the pipe
+      const gaugeBottomY = gaugeCenterY + gaugeRadius;
+      const pipeTopCenterX = pipeStartX;
+      const pipeTopCenterY = pipeStartY;
+      ctx.moveTo(gaugeCenterX, gaugeBottomY);
+      ctx.lineTo(pipeTopCenterX, pipeTopCenterY);
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Draw the pipe, water, and animated bubbles (left->right)
+    function drawPipe(x, y, deltaTime) {
+      // pipe thickness depends on pipeSize
+      const pipeThickness = pipeSize / 2;
+      const pipeHeight = 20 + pipeThickness;
+
+      // Pipe fill
+      ctx.fillStyle = "#2196F3"; 
+      ctx.fillRect(x, y, pipeLength, pipeHeight);
+
+      // Thicker black outline
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(x, y, pipeLength, pipeHeight);
+
+      // Move & draw each bubble
+      bubbles.forEach((bub) => {
+        // The bubble’s center in the pipe
+        const pipeCenterY = y + pipeHeight / 2;
+        
+        // Move bubble to the right based on pressure + bubble's own speed factor
+        const bubbleSpeed = (pressure / 40) * bub.speed; 
+        bub.x += bubbleSpeed * (deltaTime / 16);
+        if (bub.x > pipeLength) {
+          // wrap around to left if it goes off the right side
+          bub.x = -20;
+        }
+
+        // Wobble
+        const t = performance.now() * bub.wobbleSpeed;
+        const wobble = Math.sin(t) * bub.wobbleAmplitude;
+        // offset to keep them spread out vertically
+        const offsetY = bub.verticalOffset * pipeHeight;
+        const bubbleY = pipeCenterY + wobble + offsetY;
+
+        // Draw bubble
+        ctx.beginPath();
+        ctx.arc(x + bub.x, bubbleY, bub.radius, 0, 2 * Math.PI);
+        ctx.fillStyle = "#bbdefb";
+        ctx.fill();
+      });
+    }
+
+    // Draw the paddle wheel at the exit and rotate it
+    function drawPaddleWheel(deltaTime) {
+      // Slower rotation for granular changes
+      const spinSpeed = (pressure * pipeSize) / 30000; 
+      paddleAngle += spinSpeed * (deltaTime / 16);
+
+      ctx.save();
+      ctx.translate(wheelCenterX, wheelCenterY);
+      ctx.rotate(paddleAngle);
+
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 4;
+      // Draw 4 spokes
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.rotate(Math.PI / 2);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -20);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Start animation
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
